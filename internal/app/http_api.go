@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -32,6 +33,7 @@ import (
 	"github.com/leighmacdonald/steamweb/v2"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
+	"golang.org/x/exp/slices"
 )
 
 func onAPIPostDemo(app *App) gin.HandlerFunc {
@@ -4478,5 +4480,39 @@ func onAPIDeleteContestEntry(app *App) gin.HandlerFunc {
 			zap.String("contest_id", entry.ContestID.String()),
 			zap.String("contest_entry_id", entry.ContestEntryID.String()),
 			zap.String("title", contest.Title))
+	}
+}
+
+func onAPIPostScramble(app *App) gin.HandlerFunc {
+	type scrambleReq struct {
+		SteamIds steamid.Collection `json:"steam_ids"`
+	}
+
+	type scrambleResp struct {
+		Summaries []store.PlayerWinSummary `json:"summaries"`
+	}
+
+	log := app.log.Named(runtime.FuncForPC(make([]uintptr, 10)[0]).Name())
+
+	return func(ctx *gin.Context) {
+		var req scrambleReq
+		if !bind(ctx, log, &req) {
+			return
+		}
+
+		summaries, errSummaries := app.db.GetWinRates(ctx, req.SteamIds)
+		if errSummaries != nil {
+			responseErr(ctx, http.StatusInternalServerError, consts.ErrInternal)
+
+			log.Error("Error fetching contest entries", zap.Error(errSummaries))
+
+			return
+		}
+
+		slices.SortFunc(summaries, func(i, j store.PlayerWinSummary) int {
+			return cmp.Compare(i.Ranking(), j.Ranking())
+		})
+
+		ctx.JSON(http.StatusOK, scrambleResp{Summaries: summaries})
 	}
 }

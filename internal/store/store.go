@@ -20,6 +20,7 @@ import (
 	"github.com/leighmacdonald/gbans/pkg/fp"
 	"github.com/leighmacdonald/gbans/pkg/logparse"
 	"github.com/leighmacdonald/gbans/pkg/util"
+	"github.com/leighmacdonald/steamid/v3/steamid"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -314,4 +315,56 @@ func (db *Store) migrate(action MigrationAction, dsn string) error {
 	}
 
 	return nil
+}
+
+type PlayerWinSummary struct {
+	SteamID steamid.SID64 `json:"steam_id"`
+	Wins    int           `json:"wins"`
+	Losses  int           `json:"losses"`
+}
+
+func (pws PlayerWinSummary) Ranking() float64 {
+	// Don't worry about players who have not had enough base match data
+	if pws.Losses+pws.Wins < 10 {
+		return 0
+	}
+
+	return float64(pws.Wins) - float64(pws.Losses)
+}
+
+func (db *Store) GetWinRates(ctx context.Context, steamIds steamid.Collection) ([]PlayerWinSummary, error) {
+	if len(steamIds) > 100 {
+		return nil, errors.New("Too many steam ids requested, max 100")
+	}
+
+	query, args, errQuery := db.sb.
+		Select("p.steam_id",
+			"SUM(CASE WHEN winner = p.team  THEN 1 ELSE 0 END) as wins",
+			"SUM(CASE WHEN winner != p.team  THEN 1 ELSE 0 END) as losses").
+		From("match_player p").
+		LeftJoin("match m USING (match_id)").
+		Where(sq.Eq{"steam_id": steamIds}).
+		GroupBy("p.steam_id").
+		ToSql()
+	if errQuery != nil {
+		return nil, Err(errQuery)
+	}
+
+	rows, errRows := db.Query(ctx, query, args...)
+	if errRows != nil {
+		return nil, errRows
+	}
+
+	var summaries []PlayerWinSummary
+
+	for rows.Next() {
+		var sum PlayerWinSummary
+		if errScan := rows.Scan(&sum.SteamID, &sum.Wins, &sum.Losses); errScan != nil {
+			return nil, Err(errScan)
+		}
+
+		summaries = append(summaries, sum)
+	}
+
+	return summaries, nil
 }

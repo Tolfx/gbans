@@ -205,6 +205,7 @@ func createRouter(ctx context.Context, app *App) *gin.Engine {
 		serverAuth.POST("/api/sm/bans/steam/create", onAPIPostBanSteamCreate(app))
 		serverAuth.POST("/api/sm/report/create", onAPIPostReportCreate(app))
 		serverAuth.POST("/api/state_update", onAPIPostServerState(app))
+		serverAuth.POST("/api/scramble", onAPIPostScramble(app))
 	}
 
 	connectionManager := newWSConnectionManager(ctx, app.log)
