@@ -5,6 +5,7 @@ import {
     transformTimeStampedDates,
     transformTimeStampedDatesList
 } from './common';
+import { Person } from './profile';
 
 export interface CIDRBlockSource extends TimeStamped {
     cidr_block_source_id: number;
@@ -138,4 +139,18 @@ export const apiCIDRBlockCheck = async (
         { address },
         abortController
     );
+};
+
+export const apiPlayersAtIP = async (
+    address: string,
+    abortController?: AbortController
+) => {
+    const resp = await apiCall<Person[]>(
+        `/api/players/ip`,
+        'POST',
+        { address },
+        abortController
+    );
+
+    return transformTimeStampedDatesList(resp);
 };

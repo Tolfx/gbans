@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import HelpIcon from '@mui/icons-material/Help';
 import LeakAddIcon from '@mui/icons-material/LeakAdd';
+import PersonSearchIcon from '@mui/icons-material/PersonSearch';
 import VpnLockIcon from '@mui/icons-material/VpnLock';
 import Box from '@mui/material/Box';
+import ButtonGroup from '@mui/material/ButtonGroup';
 import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
 import ListItemText from '@mui/material/ListItemText';
@@ -10,12 +12,27 @@ import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
 import Tabs from '@mui/material/Tabs';
 import TextField from '@mui/material/TextField';
+import Typography from '@mui/material/Typography';
 import Grid from '@mui/material/Unstable_Grid2';
+import { fromUnixTime } from 'date-fns';
+import { Formik } from 'formik';
 import IPCIDR from 'ip-cidr';
+import * as yup from 'yup';
+import { apiPlayersAtIP, Person } from '../api';
 import { ContainerWithHeader } from '../component/ContainerWithHeader';
-import { NetworkBlockChecker } from '../component/NetworkBlockChecker';
+import {
+    ipFieldValidator,
+    NetworkBlockChecker
+} from '../component/NetworkBlockChecker';
 import { NetworkBlockSources } from '../component/NetworkBlockSources';
+import { PersonCell } from '../component/PersonCell';
 import { TabPanel } from '../component/TabPanel';
+import { VCenterBox } from '../component/VCenterBox';
+import { IPField } from '../component/formik/IPField';
+import { SubmitButton } from '../component/modal/Buttons';
+import { LazyTable, Order, RowsPerPage } from '../component/table/LazyTable';
+import { logErr } from '../util/errors';
+import { isValidSteamDate, renderDate, renderDateTime } from '../util/text';
 
 interface NetworkInputProps {
     onValidChange: (cidr: string) => void;
@@ -77,17 +94,147 @@ export const NetworkInput = ({ onValidChange }: NetworkInputProps) => {
     );
 };
 
+const validationSchema = yup.object({ ip: ipFieldValidator });
+
+interface FindPlayerIPValues {
+    ip: string;
+}
+
 const FindPlayerIP = () => {
+    const [sortOrder, setSortOrder] = useState<Order>('desc');
+    const [sortColumn, setSortColumn] = useState<keyof Person>('steam_id');
+    const [page, setPage] = useState(0);
+    const [rowPerPageCount, setRowPerPageCount] = useState<number>(
+        RowsPerPage.TwentyFive
+    );
+    const [players, setPlayers] = useState<Person[]>([]);
+
+    const onSubmit = useCallback(async (values: FindPlayerIPValues) => {
+        try {
+            const found = await apiPlayersAtIP(values.ip);
+            setPlayers(found ?? []);
+        } catch (e) {
+            logErr(e);
+        }
+    }, []);
+
     return (
-        <Grid container>
-            <Grid xs={12}>
-                <NetworkInput
-                    onValidChange={(cidr) => {
-                        console.log(cidr);
-                    }}
-                />
+        <Formik<FindPlayerIPValues>
+            onSubmit={onSubmit}
+            initialValues={{ ip: '' }}
+            validationSchema={validationSchema}
+        >
+            <Grid container padding={1} spacing={1}>
+                <Grid xs={9}>
+                    <Stack>
+                        <IPField />
+                    </Stack>
+                </Grid>
+                <Grid xs={3}>
+                    <VCenterBox>
+                        <ButtonGroup fullWidth>
+                            <SubmitButton
+                                label={'Find Players'}
+                                startIcon={<PersonSearchIcon />}
+                            />
+                        </ButtonGroup>
+                    </VCenterBox>
+                </Grid>
+                <Grid xs={12}>
+                    <LazyTable
+                        columns={[
+                            {
+                                label: 'Profile',
+                                align: 'left',
+                                sortable: true,
+                                sortKey: 'steam_id',
+                                tooltip: 'Profile at IP Address',
+                                renderer: (obj) => {
+                                    return (
+                                        <PersonCell
+                                            avatar_hash={obj.avatarhash}
+                                            personaname={obj.personaname}
+                                            steam_id={obj.steam_id}
+                                        />
+                                    );
+                                }
+                            },
+                            {
+                                label: 'Vac Bans',
+                                tooltip: 'Amount of vac bans',
+                                sortKey: 'vac_bans',
+                                align: 'left',
+                                sortable: true,
+                                renderer: (row) => (
+                                    <Typography variant={'body1'}>
+                                        {row.vac_bans}
+                                    </Typography>
+                                )
+                            },
+                            {
+                                label: 'Account Created',
+                                tooltip: 'When the account was created',
+                                sortKey: 'timecreated',
+                                align: 'left',
+                                sortable: true,
+                                renderer: (row) => (
+                                    <Typography variant={'body1'}>
+                                        {!isValidSteamDate(
+                                            fromUnixTime(row.timecreated)
+                                        )
+                                            ? 'Unknown'
+                                            : renderDate(
+                                                  fromUnixTime(row.timecreated)
+                                              )}
+                                    </Typography>
+                                )
+                            },
+                            {
+                                label: 'First Seen',
+                                align: 'left',
+                                sortable: true,
+                                sortKey: 'created_on',
+                                tooltip: 'When did the player connect first',
+                                renderer: (obj) => {
+                                    return (
+                                        <Typography variant={'body1'}>
+                                            {renderDateTime(obj.created_on)}
+                                        </Typography>
+                                    );
+                                }
+                            }
+                        ]}
+                        loading={false}
+                        rows={players}
+                        rowsPerPage={rowPerPageCount}
+                        page={page}
+                        showPager={true}
+                        count={players.length}
+                        sortOrder={sortOrder}
+                        sortColumn={sortColumn}
+                        onSortColumnChanged={async (column) => {
+                            setSortColumn(column);
+                        }}
+                        onSortOrderChanged={async (direction) => {
+                            setSortOrder(direction);
+                        }}
+                        onPageChange={(_, newPage: number) => {
+                            setPage(newPage);
+                        }}
+                        onRowsPerPageChange={(
+                            event: React.ChangeEvent<
+                                HTMLInputElement | HTMLTextAreaElement
+                            >
+                        ) => {
+                            setRowPerPageCount(
+                                parseInt(event.target.value, 10)
+                            );
+                            setPage(0);
+                        }}
+                    />
+                </Grid>
             </Grid>
-        </Grid>
+        </Formik>
     );
 };
 

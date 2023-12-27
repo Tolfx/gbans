@@ -24,6 +24,7 @@ export const IPField = <T,>() => {
     >();
     return (
         <TextField
+            size={'small'}
             fullWidth
             id="ip"
             name={'ip'}

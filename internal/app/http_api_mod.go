@@ -1554,3 +1554,34 @@ func onAPIUpdateForumForum(app *App) gin.HandlerFunc {
 		log.Info("Forum updated", zap.String("title", forum.Title))
 	}
 }
+
+func onAPIPlayersAtIP(app *App) gin.HandlerFunc {
+	log := app.log.Named(runtime.FuncForPC(make([]uintptr, 10)[0]).Name())
+
+	type checkReq struct {
+		Address string `json:"address"`
+	}
+
+	return func(ctx *gin.Context) {
+		var req checkReq
+		if !bind(ctx, log, &req) {
+			return
+		}
+
+		ipAddr := net.ParseIP(req.Address)
+		if ipAddr == nil {
+			responseErr(ctx, http.StatusBadRequest, consts.ErrBadRequest)
+
+			return
+		}
+
+		players, errPlayer := app.db.GetPeopleByIP(ctx, ipAddr)
+		if errPlayer != nil && errors.Is(errPlayer, store.ErrNoResult) {
+			responseErr(ctx, http.StatusInternalServerError, consts.ErrInternal)
+
+			return
+		}
+
+		ctx.JSON(http.StatusOK, players)
+	}
+}

@@ -345,6 +345,57 @@ func (db *Store) GetPersonBySteamID(ctx context.Context, sid64 steamid.SID64, pe
 		&person.Muted))
 }
 
+func (db *Store) GetPeopleByIP(ctx context.Context, addr net.IP) (People, error) {
+	// SELECT DISTINCT c.steam_id FROM person_connections c
+	// WHERE c.ip_addr <<= '::ffff:87.52.110.236'::inet;
+	var people People
+
+	subQuery, subQueryArgs, errSubQuery := db.sb.
+		Select("DISTINCT c.steam_id").
+		From("person_connections c").
+		Where(sq.Expr("c.ip_addr <<= $1::inet", fmt.Sprintf("::ffff:%s", addr.String()))).
+		ToSql()
+	if errSubQuery != nil {
+		return nil, Err(errSubQuery)
+	}
+
+	rows, errQuery := db.QueryBuilder(ctx, db.sb.
+		Select(profileColumns...).
+		From("person").
+		Where(fmt.Sprintf("steam_id IN (%s)", subQuery), subQueryArgs...))
+	if errQuery != nil {
+		return nil, Err(errQuery)
+	}
+
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			steamID int64
+			person  = NewPerson("")
+		)
+
+		if errScan := rows.Scan(&steamID, &person.CreatedOn, &person.UpdatedOn, &person.CommunityVisibilityState,
+			&person.ProfileState, &person.PersonaName, &person.ProfileURL, &person.Avatar, &person.AvatarMedium,
+			&person.AvatarFull, &person.AvatarHash, &person.PersonaState, &person.RealName, &person.TimeCreated,
+			&person.LocCountryCode, &person.LocStateCode, &person.LocCityID, &person.PermissionLevel, &person.DiscordID,
+			&person.CommunityBanned, &person.VACBans, &person.GameBans, &person.EconomyBan, &person.DaysSinceLastBan,
+			&person.UpdatedOnSteam, &person.Muted); errScan != nil {
+			return nil, errors.Wrapf(errScan, "Failedto scan person")
+		}
+
+		person.SteamID = steamid.New(steamID)
+
+		people = append(people, person)
+	}
+
+	if people == nil {
+		people = People{}
+	}
+
+	return people, nil
+}
+
 func (db *Store) GetPeopleBySteamID(ctx context.Context, steamIds steamid.Collection) (People, error) {
 	var ids []int64 //nolint:prealloc
 	for _, sid := range fp.Uniq[steamid.SID64](steamIds) {

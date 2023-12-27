@@ -195,7 +195,7 @@ export const AdminPeoplePage = (): JSX.Element => {
                                 )
                             },
                             {
-                                label: 'Profile',
+                                label: 'Visibility',
                                 tooltip: 'Community Visibility State',
                                 sortKey: 'communityvisibilitystate',
                                 align: 'left',
@@ -210,7 +210,7 @@ export const AdminPeoplePage = (): JSX.Element => {
                                 )
                             },
                             {
-                                label: 'Vac Ban',
+                                label: 'Vac Bans',
                                 tooltip: 'Amount of vac bans',
                                 sortKey: 'vac_bans',
                                 align: 'left',
